@@ -12,3 +12,5 @@ backend/downloads
 
 # logs
 npm-debug.log*
+
+backend/instagram_cookies.txt
