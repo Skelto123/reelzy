@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -9,10 +9,12 @@ export default function Home() {
   const [status, setStatus] = useState("");
   const [canDownload, setCanDownload] = useState(false);
 
+  const videoFormRef = useRef<HTMLFormElement>(null);
+  const audioFormRef = useRef<HTMLFormElement>(null);
+
   /* ---------------- ANALYZE ---------------- */
   const handleAnalyze = async () => {
     const cleanedUrl = url.trim();
-
     if (!cleanedUrl) {
       setStatus("Please paste an Instagram Reel link");
       return;
@@ -20,7 +22,7 @@ export default function Home() {
 
     try {
       setCanDownload(false);
-      setStatus("Analyzing...");
+      setStatus("Analyzing…");
 
       const res = await fetch(`${API}/api/analyze`, {
         method: "POST",
@@ -37,74 +39,20 @@ export default function Home() {
 
       setStatus("Reel detected. Choose video or audio.");
       setCanDownload(true);
-    } catch (err) {
-      console.error(err);
-      setStatus("Server error. Try again.");
+    } catch {
+      setStatus("Server waking up… try again in 5 seconds.");
     }
   };
 
-  /* ---------------- DOWNLOAD VIDEO ---------------- */
-  const handleVideoDownload = async () => {
-    try {
-      setStatus("Downloading video...");
-
-      const res = await fetch(`${API}/api/download/video`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Video download failed");
-      }
-
-      const blob = await res.blob(); // ✅ IMPORTANT
-      const downloadUrl = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = "ReelZy_video.mp4";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      setStatus("Video downloaded successfully");
-    } catch (err) {
-      console.error(err);
-      setStatus("Server error. Try again.");
-    }
+  /* ---------------- DOWNLOAD (NATIVE POST) ---------------- */
+  const downloadVideo = () => {
+    setStatus("Downloading video…");
+    videoFormRef.current?.submit();
   };
 
-  /* ---------------- DOWNLOAD AUDIO ---------------- */
-  const handleAudioDownload = async () => {
-    try {
-      setStatus("Downloading audio...");
-
-      const res = await fetch(`${API}/api/download/audio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Audio download failed");
-      }
-
-      const blob = await res.blob(); // ✅ IMPORTANT
-      const downloadUrl = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = "ReelZy_audio.mp3";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      setStatus("Audio downloaded successfully");
-    } catch (err) {
-      console.error(err);
-      setStatus("Server error. Try again.");
-    }
+  const downloadAudio = () => {
+    setStatus("Downloading audio…");
+    audioFormRef.current?.submit();
   };
 
   return (
@@ -116,31 +64,49 @@ export default function Home() {
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         placeholder="Paste Instagram Reel link"
-        className="w-full max-w-md px-4 py-3 border rounded-md outline-none"
+        className="w-full max-w-md px-4 py-3 border rounded-md"
       />
 
       <button
         onClick={handleAnalyze}
-        className="px-6 py-3 bg-pink-500 text-white rounded-md font-medium"
+        className="px-6 py-3 bg-pink-500 text-white rounded-md"
       >
         Analyze
       </button>
 
       {canDownload && (
-        <div className="flex gap-4 mt-2">
-          <button
-            onClick={handleVideoDownload}
-            className="px-6 py-2 bg-black text-white rounded-md"
+        <div className="flex gap-4">
+          {/* VIDEO FORM */}
+          <form
+            ref={videoFormRef}
+            method="POST"
+            action={`${API}/api/download/video`}
           >
-            Download Video
-          </button>
+            <input type="hidden" name="url" value={url} />
+            <button
+              type="button"
+              onClick={downloadVideo}
+              className="px-6 py-2 bg-black text-white rounded-md"
+            >
+              Download Video
+            </button>
+          </form>
 
-          <button
-            onClick={handleAudioDownload}
-            className="px-6 py-2 border border-pink-500 text-pink-500 rounded-md"
+          {/* AUDIO FORM */}
+          <form
+            ref={audioFormRef}
+            method="POST"
+            action={`${API}/api/download/audio`}
           >
-            Download Audio
-          </button>
+            <input type="hidden" name="url" value={url} />
+            <button
+              type="button"
+              onClick={downloadAudio}
+              className="px-6 py-2 border border-pink-500 text-pink-500 rounded-md"
+            >
+              Download Audio
+            </button>
+          </form>
         </div>
       )}
 
