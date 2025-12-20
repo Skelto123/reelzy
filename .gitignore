@@ -1,0 +1,14 @@
+# node
+node_modules
+.env
+.env.local
+
+# next
+.next
+out
+
+# backend
+backend/downloads
+
+# logs
+npm-debug.log*
