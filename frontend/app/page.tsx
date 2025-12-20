@@ -14,35 +14,43 @@ export default function Home() {
 
   /* ---------------- ANALYZE ---------------- */
   const handleAnalyze = async () => {
-    const cleanedUrl = url.trim();
-    if (!cleanedUrl) {
-      setStatus("Please paste an Instagram Reel link");
+  const cleanedUrl = url.trim();
+  if (!cleanedUrl) {
+    setStatus("Please paste an Instagram Reel link");
+    return;
+  }
+
+  try {
+    setCanDownload(false);
+    setStatus("Waking server…");
+
+    // 🔹 1. Wake backend
+    await fetch(`${API}/api/health`);
+
+    // 🔹 2. Small wait
+    await new Promise((r) => setTimeout(r, 4000));
+
+    // 🔹 3. Analyze
+    setStatus("Analyzing…");
+    const res = await fetch(`${API}/api/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: cleanedUrl }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setStatus(data.error || "Invalid link");
       return;
     }
 
-    try {
-      setCanDownload(false);
-      setStatus("Analyzing…");
-
-      const res = await fetch(`${API}/api/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: cleanedUrl }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus(data.error || "Invalid link");
-        return;
-      }
-
-      setStatus("Reel detected. Choose video or audio.");
-      setCanDownload(true);
-    } catch {
-      setStatus("Server waking up… try again in 5 seconds.");
-    }
-  };
+    setStatus("Reel detected. Choose video or audio.");
+    setCanDownload(true);
+  } catch {
+    setStatus("Server is waking up. Please click Analyze again.");
+  }
+};
 
   /* ---------------- DOWNLOAD (NATIVE POST) ---------------- */
   const downloadVideo = () => {
