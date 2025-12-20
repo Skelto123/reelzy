@@ -1,17 +1,16 @@
 import express from "express";
 import cors from "cors";
-import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import YtDlpWrap from "yt-dlp-wrap";
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 /* ---------------- BASIC SETUP ---------------- */
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,14 +20,16 @@ if (!fs.existsSync(DOWNLOAD_DIR)) {
   fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 }
 
+const ytDlp = new YtDlpWrap();
+
 /* ---------------- AUTO DELETE ---------------- */
-const AUTO_DELETE_TIME = 10 * 60 * 1000; // 10 minutes
+const AUTO_DELETE_TIME = 10 * 60 * 1000; // 10 min
 
 function scheduleFileDeletion(filePath) {
   setTimeout(() => {
     if (fs.existsSync(filePath)) {
       fs.unlink(filePath, () => {
-        console.log("🗑️ Auto-deleted:", path.basename(filePath));
+        console.log("🗑️ Deleted:", path.basename(filePath));
       });
     }
   }, AUTO_DELETE_TIME);
@@ -39,12 +40,8 @@ function getNextFileNumber(prefix) {
   const files = fs.readdirSync(DOWNLOAD_DIR);
   const nums = files
     .filter((f) => f.startsWith(prefix))
-    .map((f) => {
-      const m = f.match(/_(\d+)/);
-      return m ? parseInt(m[1]) : 0;
-    })
-    .filter((n) => n > 0);
-
+    .map((f) => parseInt(f.split("_")[2]))
+    .filter(Boolean);
   return nums.length ? Math.max(...nums) + 1 : 1;
 }
 
@@ -53,38 +50,14 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "ReelZy backend is running" });
 });
 
-/* ---------------- ANALYZE ---------------- */
+/* ---------------- ANALYZE (FAST & SAFE) ---------------- */
 app.post("/api/analyze", (req, res) => {
   console.log("ANALYZE HIT:", req.body);
-  console.error("ANALYZE ERROR:", error);
+
   const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "URL is required" });
 
-  if (!url) {
-    return res.status(400).json({ error: "URL is required" });
-  }
-
-  const isReel = url.includes("instagram.com/reel/");
-  const isPost = url.includes("instagram.com/p/");
-
-  if (!isReel && !isPost) {
-    return res.status(400).json({ error: "Invalid Instagram URL" });
-  }
-
-  return res.json({
-    status: "ok",
-    type: isReel ? "reel" : "post",
-    actions: isReel ? ["video", "audio"] : ["video"],
-  });
-});
-
-app.post("/api/analyze", (req, res) => {
-  const { url } = req.body;
-
-  if (!url) {
-    return res.status(400).json({ error: "URL is required" });
-  }
-
-  if (url.includes("instagram.com/reel")) {
+  if (url.includes("instagram.com/reel/")) {
     return res.json({
       status: "ok",
       type: "reel",
@@ -96,171 +69,87 @@ app.post("/api/analyze", (req, res) => {
     return res.json({
       status: "ok",
       type: "post",
-      actions: ["video"],        // 👈 image not supported
-      note: "Post image download coming soon",
+      actions: ["video"],
     });
   }
 
-  return res.status(400).json({
-    error: "Unsupported Instagram URL",
-  });
+  return res.status(400).json({ error: "Invalid Instagram URL" });
 });
 
-/* ---------------- SSE PROGRESS ---------------- */
-const progressClients = {};
+/* ---------------- DOWNLOAD VIDEO ---------------- */
+app.post("/api/download/video", async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "URL required" });
 
-app.get("/api/progress/:id", (req, res) => {
-  const { id } = req.params;
+  try {
+    const count = getNextFileNumber("ReelZy_video");
+    const fileName = `ReelZy_video_${count}.mp4`;
+    const outputPath = path.join(DOWNLOAD_DIR, fileName);
 
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
+    await ytDlp.exec([
+      url,
+      "-f", "mp4",
+      "-o", outputPath
+    ]);
 
-  res.write(`data: ${JSON.stringify({ connected: true })}\n\n`);
-  progressClients[id] = res;
-
-  req.on("close", () => {
-    delete progressClients[id];
-  });
-});
-
-/* ---------------- REEL VIDEO ---------------- */
-app.post("/api/download/video", (req, res) => {
-  const { url, id } = req.body;
-  if (!url || !id) return res.status(400).json({ error: "Missing data" });
-
-  const count = getNextFileNumber("ReelZy_video");
-  const fileName = `ReelZy_video_${count}.mp4`;
-  const outputPath = path.join(DOWNLOAD_DIR, fileName);
-
-  const ytdlp = spawn("yt-dlp", [
-    "-f",
-    "mp4",
-    "-o",
-    outputPath,
-    "--progress",
-    url,
-  ]);
-
-  ytdlp.stdout.on("data", (data) => {
-    const m = data.toString().match(/(\d{1,3}\.\d)%/);
-    if (m && progressClients[id]) {
-      progressClients[id].write(
-        `data: ${JSON.stringify({ progress: m[1] })}\n\n`
-      );
-    }
-  });
-
-  ytdlp.on("close", () => {
     scheduleFileDeletion(outputPath);
-
-    if (progressClients[id]) {
-      progressClients[id].write(
-        `data: ${JSON.stringify({ done: true, file: fileName })}\n\n`
-      );
-      progressClients[id].end();
-      delete progressClients[id];
-    }
-  });
-
-  res.json({ started: true });
+    res.download(outputPath);
+  } catch (err) {
+    console.error("VIDEO ERROR:", err);
+    res.status(500).json({ error: "Video download failed" });
+  }
 });
 
-/* ---------------- REEL AUDIO ---------------- */
-app.post("/api/download/audio", (req, res) => {
-  const { url, id } = req.body;
-  if (!url || !id) return res.status(400).json({ error: "Missing data" });
+/* ---------------- DOWNLOAD AUDIO ---------------- */
+app.post("/api/download/audio", async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "URL required" });
 
-  const count = getNextFileNumber("ReelZy_audio");
-  const fileName = `ReelZy_audio_${count}.mp3`;
-  const outputPath = path.join(DOWNLOAD_DIR, fileName);
+  try {
+    const count = getNextFileNumber("ReelZy_audio");
+    const fileName = `ReelZy_audio_${count}.mp3`;
+    const outputPath = path.join(DOWNLOAD_DIR, fileName);
 
-  const ytdlp = spawn("yt-dlp", [
-    "-x",
-    "--audio-format",
-    "mp3",
-    "-o",
-    outputPath,
-    "--progress",
-    url,
-  ]);
+    await ytDlp.exec([
+      url,
+      "-x",
+      "--audio-format", "mp3",
+      "-o", outputPath
+    ]);
 
-  ytdlp.stdout.on("data", (data) => {
-    const m = data.toString().match(/(\d{1,3}\.\d)%/);
-    if (m && progressClients[id]) {
-      progressClients[id].write(
-        `data: ${JSON.stringify({ progress: m[1] })}\n\n`
-      );
-    }
-  });
-
-  ytdlp.on("close", () => {
     scheduleFileDeletion(outputPath);
-
-    if (progressClients[id]) {
-      progressClients[id].write(
-        `data: ${JSON.stringify({ done: true, file: fileName })}\n\n`
-      );
-      progressClients[id].end();
-      delete progressClients[id];
-    }
-  });
-
-  res.json({ started: true });
+    res.download(outputPath);
+  } catch (err) {
+    console.error("AUDIO ERROR:", err);
+    res.status(500).json({ error: "Audio download failed" });
+  }
 });
 
 /* ---------------- POST VIDEO ---------------- */
-app.post("/api/download/post", (req, res) => {
-  const { url, id } = req.body;
-  if (!url || !id) return res.status(400).json({ error: "Missing data" });
+app.post("/api/download/post", async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "URL required" });
 
-  const count = getNextFileNumber("ReelZy_post");
-  const fileName = `ReelZy_post_${count}.mp4`;
-  const outputPath = path.join(DOWNLOAD_DIR, fileName);
+  try {
+    const count = getNextFileNumber("ReelZy_post");
+    const fileName = `ReelZy_post_${count}.mp4`;
+    const outputPath = path.join(DOWNLOAD_DIR, fileName);
 
-  const ytdlp = spawn("yt-dlp", [
-    "-f",
-    "mp4",
-    "-o",
-    outputPath,
-    "--progress",
-    url,
-  ]);
+    await ytDlp.exec([
+      url,
+      "-f", "mp4",
+      "-o", outputPath
+    ]);
 
-  ytdlp.stdout.on("data", (data) => {
-    const m = data.toString().match(/(\d{1,3}\.\d)%/);
-    if (m && progressClients[id]) {
-      progressClients[id].write(
-        `data: ${JSON.stringify({ progress: m[1] })}\n\n`
-      );
-    }
-  });
-
-  ytdlp.on("close", () => {
     scheduleFileDeletion(outputPath);
-
-    if (progressClients[id]) {
-      progressClients[id].write(
-        `data: ${JSON.stringify({ done: true, file: fileName })}\n\n`
-      );
-      progressClients[id].end();
-      delete progressClients[id];
-    }
-  });
-
-  res.json({ started: true });
-});
-
-/* ---------------- FILE SERVE ---------------- */
-app.get("/api/file/:name", (req, res) => {
-  const filePath = path.join(DOWNLOAD_DIR, req.params.name);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send("File not found");
+    res.download(outputPath);
+  } catch (err) {
+    console.error("POST ERROR:", err);
+    res.status(500).json({ error: "Post download failed" });
   }
-  res.download(filePath);
 });
 
 /* ---------------- START ---------------- */
 app.listen(PORT, () => {
-  console.log(`🚀 Backend running on http://localhost:${PORT}`);
+  console.log(`🚀 Backend running on port ${PORT}`);
 });
