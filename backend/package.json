@@ -1,26 +1,11 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
   "type": "module",
-  "private": true,
-  "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node index.js"
   },
-  "keywords": [
-    "instagram",
-    "reels",
-    "downloader",
-    "audio",
-    "video",
-    "saas"
-  ],
-  "author": "ReelZy",
-  "license": "ISC",
-  "description": "ReelZy backend – Instagram Reels video & audio downloader",
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.22.1"
+    "express": "^4.19.2",
+    "yt-dlp-wrap": "^2.3.11"
   }
 }

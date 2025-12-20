@@ -8,10 +8,12 @@ import YtDlpWrap from "yt-dlp-wrap";
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-/* ---------------- BASIC SETUP ---------------- */
+/* ---------------- MIDDLEWARE ---------------- */
 app.use(cors());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+/* ---------------- PATH SETUP ---------------- */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -20,96 +22,53 @@ if (!fs.existsSync(DOWNLOAD_DIR)) {
   fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 }
 
+/* ---------------- YT-DLP ---------------- */
 const ytDlp = new YtDlpWrap();
 
-/* ---------------- AUTO DELETE ---------------- */
-const AUTO_DELETE_TIME = 10 * 60 * 1000; // 10 min
-
-function scheduleFileDeletion(filePath) {
-  setTimeout(() => {
-    if (fs.existsSync(filePath)) {
-      fs.unlink(filePath, () => {
-        console.log("🗑️ Deleted:", path.basename(filePath));
-      });
-    }
-  }, AUTO_DELETE_TIME);
-}
-
-/* ---------------- HELPERS ---------------- */
-function getNextFileNumber(prefix) {
-  const files = fs.readdirSync(DOWNLOAD_DIR);
-  const nums = files
-    .filter((f) => f.startsWith(prefix))
-    .map((f) => parseInt(f.split("_")[2]))
-    .filter(Boolean);
-  return nums.length ? Math.max(...nums) + 1 : 1;
+/* ---------------- UTIL ---------------- */
+function nextFile(prefix, ext) {
+  const count = fs.readdirSync(DOWNLOAD_DIR).length + 1;
+  return `${prefix}_${count}.${ext}`;
 }
 
 /* ---------------- HEALTH ---------------- */
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "ReelZy backend is running" });
+  res.json({ status: "ok" });
 });
 
-/* ---------------- ANALYZE (FAST & SAFE) ---------------- */
-app.post("/api/analyze", (req, res) => {
-  console.log("ANALYZE HIT:", req.body);
-
+/* ---------------- VIDEO DOWNLOAD ---------------- */
+app.post("/api/video", async (req, res) => {
   const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "URL is required" });
+  if (!url) return res.status(400).send("URL required");
 
-  if (url.includes("instagram.com/reel/")) {
-    return res.json({
-      status: "ok",
-      type: "reel",
-      actions: ["video", "audio"],
-    });
-  }
-
-  if (url.includes("instagram.com/p/")) {
-    return res.json({
-      status: "ok",
-      type: "post",
-      actions: ["video"],
-    });
-  }
-
-  return res.status(400).json({ error: "Invalid Instagram URL" });
-});
-
-/* ---------------- DOWNLOAD VIDEO ---------------- */
-app.post("/api/download/video", async (req, res) => {
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "URL required" });
+  const fileName = nextFile("ReelZy_video", "mp4");
+  const outputPath = path.join(DOWNLOAD_DIR, fileName);
 
   try {
-    const count = getNextFileNumber("ReelZy_video");
-    const fileName = `ReelZy_video_${count}.mp4`;
-    const outputPath = path.join(DOWNLOAD_DIR, fileName);
-
     await ytDlp.exec([
       url,
       "-f", "mp4",
       "-o", outputPath
     ]);
 
-    scheduleFileDeletion(outputPath);
-    res.download(outputPath);
+    res.download(outputPath, fileName, () => {
+      fs.unlink(outputPath, () => {});
+    });
   } catch (err) {
     console.error("VIDEO ERROR:", err);
-    res.status(500).json({ error: "Video download failed" });
+    res.status(500).send("Video download failed");
   }
 });
 
-/* ---------------- DOWNLOAD AUDIO ---------------- */
-app.post("/api/download/audio", async (req, res) => {
+/* ---------------- AUDIO DOWNLOAD ---------------- */
+app.post("/api/audio", async (req, res) => {
   const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "URL required" });
+  if (!url) return res.status(400).send("URL required");
+
+  const fileName = nextFile("ReelZy_audio", "mp3");
+  const outputPath = path.join(DOWNLOAD_DIR, fileName);
 
   try {
-    const count = getNextFileNumber("ReelZy_audio");
-    const fileName = `ReelZy_audio_${count}.mp3`;
-    const outputPath = path.join(DOWNLOAD_DIR, fileName);
-
     await ytDlp.exec([
       url,
       "-x",
@@ -117,39 +76,16 @@ app.post("/api/download/audio", async (req, res) => {
       "-o", outputPath
     ]);
 
-    scheduleFileDeletion(outputPath);
-    res.download(outputPath);
+    res.download(outputPath, fileName, () => {
+      fs.unlink(outputPath, () => {});
+    });
   } catch (err) {
     console.error("AUDIO ERROR:", err);
-    res.status(500).json({ error: "Audio download failed" });
-  }
-});
-
-/* ---------------- POST VIDEO ---------------- */
-app.post("/api/download/post", async (req, res) => {
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "URL required" });
-
-  try {
-    const count = getNextFileNumber("ReelZy_post");
-    const fileName = `ReelZy_post_${count}.mp4`;
-    const outputPath = path.join(DOWNLOAD_DIR, fileName);
-
-    await ytDlp.exec([
-      url,
-      "-f", "mp4",
-      "-o", outputPath
-    ]);
-
-    scheduleFileDeletion(outputPath);
-    res.download(outputPath);
-  } catch (err) {
-    console.error("POST ERROR:", err);
-    res.status(500).json({ error: "Post download failed" });
+    res.status(500).send("Audio download failed");
   }
 });
 
 /* ---------------- START ---------------- */
 app.listen(PORT, () => {
-  console.log(`🚀 Backend running on port ${PORT}`);
+  console.log("🚀 ReelZy backend running on port", PORT);
 });

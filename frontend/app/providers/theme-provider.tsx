@@ -2,7 +2,24 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 
+
+import { ThemeProvider as NextThemesProvider } from "next-themes";
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <NextThemesProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem={true}
+      storageKey="reelzy-theme"
+    >
+      {children}
+    </NextThemesProvider>
+  );
+}
+
 type Theme = "light" | "dark";
+
 
 const ThemeContext = createContext<{
   theme: Theme;
