@@ -1,5 +1,4 @@
 import "./globals.css";
-import { ThemeProvider } from "./providers/theme-provider";
 
 export const metadata = {
   title: "ReelZy",
@@ -14,9 +13,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ThemeProvider>
-          {children}
-        </ThemeProvider>
+        {children}
       </body>
     </html>
   );
