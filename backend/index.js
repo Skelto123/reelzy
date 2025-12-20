@@ -55,6 +55,8 @@ app.get("/api/health", (req, res) => {
 
 /* ---------------- ANALYZE ---------------- */
 app.post("/api/analyze", (req, res) => {
+  console.log("ANALYZE HIT:", req.body);
+  console.error("ANALYZE ERROR:", error);
   const { url } = req.body;
 
   if (!url) {
