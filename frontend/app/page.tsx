@@ -17,7 +17,8 @@ export default function Home() {
     let completed = false;
 
     const eventSource = new EventSource(
-      `http://localhost:5000/api/progress/${id}`
+      `process.env.NEXT_PUBLIC_API_URL
+/api/progress/${id}`
     );
 
     eventSource.onmessage = (event) => {
@@ -31,7 +32,8 @@ export default function Home() {
         completed = true;
         eventSource.close();
         setLoading(false);
-        window.location.href = `http://localhost:5000/api/file/${data.file}`;
+        window.location.href = `process.env.NEXT_PUBLIC_API_URL
+/api/file/${data.file}`;
       }
 
       if (data.error) {
@@ -63,7 +65,8 @@ export default function Home() {
     setCanDownload(false);
 
     try {
-      const res = await fetch("http://localhost:5000/api/analyze", {
+      const res = await fetch("process.env.NEXT_PUBLIC_API_URL
+/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: cleanedUrl }),
@@ -99,7 +102,8 @@ export default function Home() {
 
     listenToProgress(id);
 
-    await fetch(`http://localhost:5000/api/download/${endpoint}`, {
+    await fetch(`process.env.NEXT_PUBLIC_API_URL
+/api/download/${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: cleanedUrl, id }),
