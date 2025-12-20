@@ -3,7 +3,7 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import YtDlpWrap from "yt-dlp-wrap";
+import { YtDlpWrap } from "yt-dlp-wrap"; // ✅ FIXED IMPORT
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -27,7 +27,8 @@ const ytDlp = new YtDlpWrap();
 
 /* ---------------- UTIL ---------------- */
 function nextFile(prefix, ext) {
-  const count = fs.readdirSync(DOWNLOAD_DIR).length + 1;
+  const files = fs.readdirSync(DOWNLOAD_DIR);
+  const count = files.filter(f => f.startsWith(prefix)).length + 1;
   return `${prefix}_${count}.${ext}`;
 }
 
@@ -36,7 +37,7 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-/* ---------------- VIDEO DOWNLOAD ---------------- */
+/* ---------------- VIDEO ---------------- */
 app.post("/api/video", async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).send("URL required");
@@ -60,7 +61,7 @@ app.post("/api/video", async (req, res) => {
   }
 });
 
-/* ---------------- AUDIO DOWNLOAD ---------------- */
+/* ---------------- AUDIO ---------------- */
 app.post("/api/audio", async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).send("URL required");
