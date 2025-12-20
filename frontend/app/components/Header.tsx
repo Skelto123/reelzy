@@ -13,26 +13,17 @@ export default function Header() {
   const [showInstall, setShowInstall] = useState(false);
 
   useEffect(() => {
-    const handler = (e: BeforeInstallPromptEvent) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstall(true);
-    };
+  const handler = (e: Event) => {
+    e.preventDefault();
+    setDeferredPrompt(e as any);
+  };
 
-    window.addEventListener("beforeinstallprompt", handler);
+  window.addEventListener("beforeinstallprompt", handler as EventListener);
 
-    // hide if already installed
-    if (
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (navigator as any).standalone
-    ) {
-      setShowInstall(false);
-    }
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", handler);
-    };
-  }, []);
+  return () => {
+    window.removeEventListener("beforeinstallprompt", handler as EventListener);
+  };
+}, []);
 
   const handleInstall = async () => {
     if (!deferredPrompt) return;
